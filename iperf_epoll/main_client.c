@@ -8,6 +8,9 @@
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <sys/timerfd.h>
+#include <netinet/tcp.h>
+#include <errno.h>
+#include <time.h>
 
 #define MAX_EVENTS 10
 #define EPOLL_TIMEOUT_MILLIS 30000
@@ -22,6 +25,23 @@
 #define DURATION 10
 
 unsigned long long total_data_sent = 0;
+int per_sec_counter = 0;
+uint32_t previous_retx = 0;
+uint32_t previous_lost = 0;
+
+void print_tcp_info(int sockfd) {
+    struct tcp_info info;
+    socklen_t info_len = sizeof(info);
+    if (getsockopt(sockfd, IPPROTO_TCP, TCP_INFO, &info, &info_len) == 0) {
+        printf("%d\t%u\t%u\t%u\n",per_sec_counter,
+               info.tcpi_retransmits-previous_retx, info.tcpi_snd_cwnd, info.tcpi_lost-previous_lost);
+        previous_retx = info.tcpi_retransmits;
+        previous_lost = info.tcpi_lost;               
+    } else {
+        perror("Failed to get TCP info");
+    }
+}
+
 int main(){
     int client_fd = 0;
     struct sockaddr_in server_addr;
@@ -90,10 +110,12 @@ int main(){
 
     struct itimerspec timer_expiry = {};
     //Configuring Duration of timer
-    timer_expiry.it_value.tv_sec = now.tv_sec + DURATION;
-    timer_expiry.it_value.tv_nsec = now.tv_nsec;
+    timer_expiry.it_value.tv_sec = 1;
+    timer_expiry.it_value.tv_nsec = 0;
+    timer_expiry.it_interval.tv_sec = 1;
+    timer_expiry.it_interval.tv_nsec = 0;
 
-    if (timerfd_settime(timer_fd, TFD_TIMER_ABSTIME, &timer_expiry,NULL) == -1)
+    if (timerfd_settime(timer_fd, 0, &timer_expiry,NULL) == -1)
     {
         perror("Failed to Start the Timer");
         close(client_fd);
@@ -111,6 +133,7 @@ int main(){
 	    close(epoll_fd);
         exit(EXIT_FAILURE);
     }
+    printf("Time\tRetx\tCwnd\tLost\n");
 
     /*Poll For Packets*/
     int event_count= 0;
@@ -126,13 +149,23 @@ int main(){
             int fd = events[i].data.fd;
             if(fd==timer_fd)
             {
-                close(client_fd);
-                close(timer_fd);
-                close(epoll_fd);
-                double gb = total_data_sent/(1024*1024*1024.0);
-                double rate = (gb*8)/DURATION;
-                printf("Total Data Sent: %lf GB, Rate: %lf Gbps\n",gb,rate);
-                return 0;
+                uint64_t expirations;
+                read(timer_fd, &expirations, sizeof(expirations)); // Read to re-arm the timer
+                per_sec_counter++;
+                if(per_sec_counter==DURATION){
+                    print_tcp_info(client_fd);
+                    close(client_fd);
+                    close(timer_fd);
+                    close(epoll_fd);
+                    double gb = total_data_sent/(1024*1024*1024.0);
+                    double rate = (gb*8)/DURATION;
+                    printf("\nTotal Data Sent: %lf GB, Rate: %lf Gbps\n",gb,rate);
+                    return 0;
+                }
+                else{
+                    print_tcp_info(client_fd);
+                }
+                
             }
             else if(fd==client_fd)
             {
