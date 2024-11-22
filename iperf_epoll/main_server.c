@@ -12,9 +12,9 @@
 #define MAX_EVENTS 10
 #define EPOLL_TIMEOUT_MILLIS 30000
 #define MAX_CLIENTS 25
-#define BUFFER_SIZE 2048000
+#define BUFFER_SIZE 131072
 
-#define SERVER_IP "127.0.0.1"
+#define SERVER_IP "10.10.3.2"
 #define SERVER_PORT 1234
 
 struct client_info{

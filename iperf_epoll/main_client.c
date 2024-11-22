@@ -12,20 +12,26 @@
 #include <errno.h>
 #include <time.h>
 
-#define MAX_EVENTS 10
+#define MAX_EVENTS 5
 #define EPOLL_TIMEOUT_MILLIS 30000
 
 //#define BUFFER_SIZE 2097152 //2MB
 //#define BUFFER_SIZE 1048576 //1MB
 //#define BUFFER_SIZE 524288    //512KB
-#define BUFFER_SIZE 131072    //128KB
+//#define BUFFER_SIZE 131072    //128KB
+//#define BUFFER_SIZE 65536    //64KB
+#define BUFFER_SIZE 32768    //32KB
+//#define BUFFER_SIZE 16384    //16KB 
+//#define BUFFER_SIZE 8192    //8KB 
 
-#define SERVER_IP "127.0.0.1"
+#define SERVER_IP "10.10.1.2"
 #define SERVER_PORT 1234
-#define DURATION 10
+#define DURATION 5
 
 unsigned long long total_data_sent = 0;
 int per_sec_counter = 0;
+
+uint32_t previous_reordering = 0;
 uint32_t previous_retx = 0;
 uint32_t previous_lost = 0;
 
@@ -33,8 +39,14 @@ void print_tcp_info(int sockfd) {
     struct tcp_info info;
     socklen_t info_len = sizeof(info);
     if (getsockopt(sockfd, IPPROTO_TCP, TCP_INFO, &info, &info_len) == 0) {
-        printf("%d\t%u\t%u\t%u\n",per_sec_counter,
-               info.tcpi_retransmits-previous_retx, info.tcpi_snd_cwnd, info.tcpi_lost-previous_lost);
+        printf("%d\t%u\t%u\t%u\t%u\t%u\n",per_sec_counter,
+                                      info.tcpi_snd_cwnd, 
+                                      info.tcpi_reordering - previous_reordering, 
+                                      info.tcpi_retransmits - previous_retx, 
+                                      info.tcpi_lost - previous_lost,
+                                      info.tcpi_rtt);
+
+        previous_reordering = info.tcpi_reordering;
         previous_retx = info.tcpi_retransmits;
         previous_lost = info.tcpi_lost;               
     } else {
@@ -133,7 +145,7 @@ int main(){
 	    close(epoll_fd);
         exit(EXIT_FAILURE);
     }
-    printf("Time\tRetx\tCwnd\tLost\n");
+    printf("Time\tCwnd\tReorder\tRetx\tLost\tRtt\n");
 
     /*Poll For Packets*/
     int event_count= 0;
