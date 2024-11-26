@@ -161,7 +161,7 @@ int main(){
 	    close(epoll_fd);
         exit(EXIT_FAILURE);
     }
-    printf("Time,Cwnd,Unack,Reorder,Retx,Lost,Rtt,CA\n");
+    printf("Time\tCwnd\tUnack\tReorder\tRetx\tLost\tRtt\tCA\n");
 
     /*Poll For Packets*/
     int event_count= 0;
@@ -181,7 +181,7 @@ int main(){
                 read(timer_fd, &expirations, sizeof(expirations)); // Read to re-arm the timer
                 sample_counter++;
                 if(sample_counter==MAX_SAMPLES){
-                    //print_tcp_info(client_fd);
+                    print_tcp_info(client_fd);
                     close(client_fd);
                     close(timer_fd);
                     close(epoll_fd);
@@ -191,7 +191,7 @@ int main(){
                     return 0;
                 }
                 else{
-                    //print_tcp_info(client_fd);
+                    print_tcp_info(client_fd);
                 }
                 
             }

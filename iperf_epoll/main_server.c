@@ -14,8 +14,8 @@
 #define MAX_CLIENTS 25
 #define BUFFER_SIZE 131072
 
-#define SERVER_IP "10.10.3.2"
-#define SERVER_PORT 1234
+#define SERVER_IP "10.10.2.2"
+#define SERVER_PORT 5201
 
 struct client_info{
     int fd;
