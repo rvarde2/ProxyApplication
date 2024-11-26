@@ -12,7 +12,7 @@
 #include <errno.h>
 #include <time.h>
 
-#define MAX_EVENTS 5
+#define MAX_EVENTS 10
 #define EPOLL_TIMEOUT_MILLIS 30000
 
 //#define BUFFER_SIZE 2097152 //2MB
@@ -25,30 +25,34 @@
 //#define BUFFER_SIZE 8192    //8KB 
 
 #define SERVER_IP "10.10.1.2"
-#define SERVER_PORT 1234
-#define DURATION 5
+#define SERVER_PORT 5201
+#define CLIENT_IP "10.10.1.1"
+#define CLIENT_PORT 6201
+#define DURATION 10
+#define FREQUENCY 1000
+#define MAX_SAMPLES DURATION * FREQUENCY
 
 unsigned long long total_data_sent = 0;
-int per_sec_counter = 0;
+int sample_counter = 0;
 
 uint32_t previous_reordering = 0;
-uint32_t previous_retx = 0;
-uint32_t previous_lost = 0;
+uint32_t previous_retransmits = 0;
 
 void print_tcp_info(int sockfd) {
     struct tcp_info info;
     socklen_t info_len = sizeof(info);
     if (getsockopt(sockfd, IPPROTO_TCP, TCP_INFO, &info, &info_len) == 0) {
-        printf("%d\t%u\t%u\t%u\t%u\t%u\n",per_sec_counter,
+        printf("%.3f,%u,%u,%u,%u,%u,%u,%u\n",sample_counter/(FREQUENCY*1.0),
                                       info.tcpi_snd_cwnd, 
+                                      info.tcpi_unacked,
                                       info.tcpi_reordering - previous_reordering, 
-                                      info.tcpi_retransmits - previous_retx, 
-                                      info.tcpi_lost - previous_lost,
-                                      info.tcpi_rtt);
+                                      info.tcpi_retransmits - previous_retransmits, 
+                                      info.tcpi_lost,
+                                      info.tcpi_rtt,
+                                      info.tcpi_ca_state);
 
         previous_reordering = info.tcpi_reordering;
-        previous_retx = info.tcpi_retransmits;
-        previous_lost = info.tcpi_lost;               
+        previous_retransmits = info.tcpi_retransmits;  
     } else {
         perror("Failed to get TCP info");
     }
@@ -56,7 +60,7 @@ void print_tcp_info(int sockfd) {
 
 int main(){
     int client_fd = 0;
-    struct sockaddr_in server_addr;
+    struct sockaddr_in server_addr,client_addr;
     char buffer[BUFFER_SIZE];
     memset(buffer, 'A', BUFFER_SIZE);
 
@@ -73,6 +77,14 @@ int main(){
         perror("Failed to convert IP address");
         exit(EXIT_FAILURE);
     }
+    
+    client_addr.sin_family=AF_INET;
+    client_addr.sin_port=htons(CLIENT_PORT);
+    if (inet_pton(AF_INET, CLIENT_IP, &(client_addr.sin_addr)) <= 0) {
+        perror("Failed to convert IP address");
+        exit(EXIT_FAILURE);
+    }
+
 
     /*Creating epoll fd*/
     int epoll_fd = epoll_create1(0);
@@ -122,10 +134,10 @@ int main(){
 
     struct itimerspec timer_expiry = {};
     //Configuring Duration of timer
-    timer_expiry.it_value.tv_sec = 1;
-    timer_expiry.it_value.tv_nsec = 0;
-    timer_expiry.it_interval.tv_sec = 1;
-    timer_expiry.it_interval.tv_nsec = 0;
+    timer_expiry.it_value.tv_sec = 0;
+    timer_expiry.it_value.tv_nsec = (1000000000.0/FREQUENCY);
+    timer_expiry.it_interval.tv_sec = 0;
+    timer_expiry.it_interval.tv_nsec = (1000000000.0/FREQUENCY);
 
     if (timerfd_settime(timer_fd, 0, &timer_expiry,NULL) == -1)
     {
@@ -136,8 +148,12 @@ int main(){
         exit(EXIT_FAILURE);
 
     }
-    printf("Registered client_fd and timer_fd to Epoll Successfully\n");
-    
+    //printf("Registered client_fd and timer_fd to Epoll Successfully\n");
+    if(bind(client_fd,(const struct sockaddr*)&client_addr,sizeof(struct sockaddr_in))<0){
+        perror("Failed to Bind to Client");
+        exit(EXIT_FAILURE);
+    }
+
     if(connect(client_fd,(const struct sockaddr*)&server_addr,sizeof(struct sockaddr_in))<0){
         perror("Failed to Connect to the Server");
         close(client_fd);
@@ -145,7 +161,7 @@ int main(){
 	    close(epoll_fd);
         exit(EXIT_FAILURE);
     }
-    printf("Time\tCwnd\tReorder\tRetx\tLost\tRtt\n");
+    printf("Time,Cwnd,Unack,Reorder,Retx,Lost,Rtt,CA\n");
 
     /*Poll For Packets*/
     int event_count= 0;
@@ -163,9 +179,9 @@ int main(){
             {
                 uint64_t expirations;
                 read(timer_fd, &expirations, sizeof(expirations)); // Read to re-arm the timer
-                per_sec_counter++;
-                if(per_sec_counter==DURATION){
-                    print_tcp_info(client_fd);
+                sample_counter++;
+                if(sample_counter==MAX_SAMPLES){
+                    //print_tcp_info(client_fd);
                     close(client_fd);
                     close(timer_fd);
                     close(epoll_fd);
@@ -175,7 +191,7 @@ int main(){
                     return 0;
                 }
                 else{
-                    print_tcp_info(client_fd);
+                    //print_tcp_info(client_fd);
                 }
                 
             }
