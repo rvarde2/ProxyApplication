@@ -8,7 +8,7 @@ fi
 
 MODE=$3
 CHANNEL_NAME=pvapy:image
-FRAME_RATE=1
+FRAME_RATE=10
 DURATION=10
 REPORT_RATE=1
 export EPICS_PVA_BROADCAST_PORT=1000
@@ -18,7 +18,7 @@ if [ "$MODE" == "producer" ]; then
     export EPICS_PVA_SERVER_PORT=$2
     pvapy-ad-sim-server -cn $CHANNEL_NAME -nx 128 -ny 128 -dt uint8 -rt $DURATION -fps $FRAME_RATE -rp $REPORT_RATE
 elif [ "$MODE" == "consumer" ]; then
-    export EPICS_PVA_NAME_SERVER=$1:$2
+    export EPICS_PVA_NAME_SERVER="$1:$2"
     pvapy-hpc-consumer \
     --input-channel $CHANNEL_NAME \
     --control-channel consumer:*:control \

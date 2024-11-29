@@ -29,7 +29,7 @@
 #define CLIENT_IP "10.10.1.1"
 #define CLIENT_PORT 6201
 #define DURATION 10
-#define FREQUENCY 1000
+#define FREQUENCY 10
 #define MAX_SAMPLES DURATION * FREQUENCY
 
 unsigned long long total_data_sent = 0;
